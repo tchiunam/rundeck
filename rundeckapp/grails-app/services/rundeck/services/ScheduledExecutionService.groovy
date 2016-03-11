@@ -55,6 +55,9 @@ import rundeck.quartzjobs.ExecutionJob
 import javax.servlet.http.HttpSession
 import java.text.MessageFormat
 import java.text.SimpleDateFormat
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+import java.util.TimeZone
 
 /**
  *  ScheduledExecutionService manages scheduling jobs with the Quartz scheduler
@@ -1115,9 +1118,21 @@ class ScheduledExecutionService implements ApplicationContextAware, Initializing
         def cronExpression = se.generateCrontabExression()
         try {
             log.info("creating trigger with crontab expression: " + cronExpression)
-            trigger = TriggerBuilder.newTrigger().withIdentity(se.generateJobScheduledName(), se.generateJobGroupName())
-                    .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression))
-                    .build()
+            def jobName = se.generateJobScheduledName()
+            def Pattern pattern = Pattern.compile(".* tz\\((.+)\\)")
+            def Matcher matcher = pattern.matcher(jobName)
+            if (matcher.find()) {
+                def jobTimezone = matcher.group(1).replace(" ", "/")
+                log.info("timezone{'" + jobTimezone + "'} for job{'" + jobName + "'}")
+                trigger = TriggerBuilder.newTrigger().withIdentity(se.generateJobScheduledName(), se.generateJobGroupName())
+                        .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression).inTimeZone(TimeZone.getTimeZone(jobTimezone)))
+                        .build()
+            } else {
+                log.info("default timezone for job{'" + jobName + "'}")
+                trigger = TriggerBuilder.newTrigger().withIdentity(se.generateJobScheduledName(), se.generateJobGroupName())
+                        .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression))
+                        .build()
+            }
         } catch (java.text.ParseException ex) {
             throw new RuntimeException("Failed creating trigger. Invalid cron expression: " + cronExpression )
         }
